@@ -5,7 +5,7 @@ import requests
 from botocore.config import Config
 
 # Kendraクライアントの初期化
-kendra = boto3.client('kendra')
+kendra = boto3.client("kendra", region_name="ap-northeast-1")
 
 # Bedrockの設定
 bedrock_runtime = boto3.client(
@@ -28,11 +28,11 @@ def post_message_to_slack(text, channel):
     return response.json()  # SlackからのレスポンスをJSONで返す
 
 
-def kendra_search(question):
+def kendra_search(question: str) -> list[dict[str, str]]:
     index_id = os.getenv('KENDRA_INDEX_ID')
 
     try:
-        response = kendra.query(
+        response = kendra.retrieve(
             QueryText=question,
             IndexId=index_id,
             AttributeFilter={
@@ -45,8 +45,24 @@ def kendra_search(question):
     except Exception as e:
         print(f"Error querying Kendra: {e}")
         return []
+
     print('Kendra response:', response)
-    return [item.get("DocumentExcerpt", {}).get("Text", "").replace('\\n', ' ') for item in response.get('ResultItems', [])[:3]]
+    # 検索結果から上位5つを抽出
+    results = response["ResultItems"][:5] if response["ResultItems"] else []
+
+    # 検索結果の中から文章とURIのみを抽出
+    extracted_results = []
+    for item in results:
+        content = item.get("Content")
+        document_uri = item.get("DocumentURI")
+
+        extracted_results.append(
+            {
+                "Content": content,
+                "DocumentURI": document_uri,
+            }
+        )
+    return extracted_results
 
 
 def lambda_handler(event, context):
@@ -68,14 +84,12 @@ def lambda_handler(event, context):
         question = message_text.replace(slack_mention_id, '').strip()
         information = kendra_search(question)
         print('information:', information)
-        information_prompts = '\n'.join(
-            [f"情報:「{info}」" for info in information])
 
         prompt = f"""
         \n\nSystem: あなたは株式会社OPTEMOのサービスの情報や社内規則やメンバー情報などを説明するチャットbotです。
         以下の情報を参考にして、社内のメンバーからの質問に答えてください。与えられたデータの中に質問に対する答えがない場合、もしくはわからない場合、不確かな情報は決して答えないでください。わからない場合は正直に「わかりませんでした」と答えてください。また、一度Assistantの応答が終わった場合、その後新たな質問などは出力せずに終了してください。
 
-        {information_prompts}
+        {information}
 
         \n\nHuman: {question}
 
@@ -85,8 +99,8 @@ def lambda_handler(event, context):
 
         try:
             response = bedrock_runtime.invoke_model(
-                # modelId='anthropic.claude-v2:1',
-                modelId='anthropic.claude-instant-v1',
+                modelId='anthropic.claude-v2:1',
+                # modelId='anthropic.claude-instant-v1',
                 contentType='application/json',
                 accept='*/*',
                 body=json.dumps(
