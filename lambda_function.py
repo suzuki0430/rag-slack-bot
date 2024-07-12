@@ -67,6 +67,7 @@ def kendra_search(question: str) -> list[dict[str, str]]:
 
 
 def lambda_handler(event, context):
+    company_name = os.getenv('COMPANY_NAME')
     slack_mention_id = os.getenv('SLACK_MENTION_ID')
     slack_event = event['body']  # ボディが既に辞書型の場合はそのまま使用
     print('slack_event', slack_event)
@@ -83,7 +84,7 @@ def lambda_handler(event, context):
         print('information:', information)
 
         prompt = f"""
-        \n\nSystem: あなたは株式会社OPTEMOのサービスの情報や社内規則やメンバー情報などを説明するチャットbotです。
+        \n\nSystem: あなたは{company_name}のサービスの情報や社内規則やメンバー情報などを説明するチャットbotです。
         以下の情報を参考にして、社内のメンバーからの質問に答えてください。与えられたデータの中に質問に対する答えがない場合、もしくはわからない場合、不確かな情報は決して答えないでください。わからない場合は正直に「わかりませんでした」と答えてください。また、一度Assistantの応答が終わった場合、その後新たな質問などは出力せずに終了してください。
 
         {information}
